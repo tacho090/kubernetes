@@ -1,0 +1,365 @@
+#test internet speed
+curl -s https://raw.githubusercontent.com/sivel/speedtest-cli/master/speedtest.py | python -
+
+######### LINUX
+
+# See Linux capabilities for a user
+cat /usr/include/linux/capability.h
+
+
+######## KUBECTL
+
+------------------------------------------------
+# Check user running in the pod
+------------------------------------------------
+kubectl exec <pod-name> -- whoam
+
+
+------------------------------------------------
+# Taint node and effect on pods that are placed on this node and has no effect
+------------------------------------------------
+Possible values for effects: NoSchedule | PreferNoSchedule | NoExecute
+kubectl taint nodes <node-name> key=value:taint-effect
+
+Example:
+kubectl taint nodes node1 app=blue:NoSchedule
+
+Example with pod-definitions:
+apiVersion:
+kind: Pod
+metadata:
+  name: myapp-pod
+spec:
+  containers:
+  - name: nginx-container
+    image: nginx
+
+  tolerations:
+  - key: "app"
+    operator: "Equal"
+    value: "blue"
+    effect: "NoSchedule"
+
+------------------------------------------------
+# See Taint on Master node
+------------------------------------------------
+kubectl describe node kubemaster | grep Taint
+
+------------------------------------------------
+# Node Selectors
+------------------------------------------------
+kubectl label nodes <node-name> <label-key>=<label-value>
+kubectl label nodes node-1 size=Large
+
+Example with pod definition:
+apiVersion:
+kind: Pod
+metadata:
+  name: myapp-pod
+spec:
+  containers:
+  - name: data-processor
+    image: data-processor
+  nodeSelector:
+    size: Large
+
+Example with pod definition with nodeAffinity with required label:
+apiVersion:
+kind:
+metadata:
+  name: myapp-pod
+spec:
+  containers:
+  - name: data-processor
+    image: data-processor
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+	- matchExpressions:
+	  - key: size
+	    operator: In
+	    values:
+	    - Large
+	    - Mediu
+	   
+Example with pod definition with nodeAffinity with preferred label:
+apiVersion:
+kind:
+metadata:
+  name: myapp-pod
+spec:
+  containers:
+  - name: data-processor
+    image: data-processor
+  affinity:
+    nodeAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchExpressions:
+          - key: size
+            operator: In
+            values:
+            - Large
+            - Medium
+
+------------------------------
+# Readiness Probes
+------------------------------
+
+Pod Status: Tells us where a pod is in its lifecycle
+When a pod is first created, it exists in a pending state. The scheduler has to figure out where to place the pod. It remains in a pending state if the scheduler can't find on which node to place it.
+Once a pod is scheduled, it assumes a ContainerCreating status, where an image is pulled.
+Whenever a pod starts it goes into a running state until the program completes succesfully or is terminated.
+
+Pod Conditions: boolean values
+	PodScheduled
+	Initialized
+	ContainersReady
+	Ready
+
+	To watch conditions for a pod type kubectl describe pod and look for the conditions section
+
+Readiness Probes
+	HTTP Test - /api/ready
+	TCP Test - 3306
+	Exec command
+
+Example of readiness probe in pod-definition.yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: simple-webapp
+  labels:
+    name: simple-webapp
+spec:
+  containers:
+  - name: simple-webapp
+    image: simple-webapp
+    ports:
+      - containerPort: 8080
+    readinessProbe:
+      httpGet:
+        path: /api/ready
+	port: 8080
+      initialDelaySeconds: 10
+      periodSeconds: 5
+      failureThreshold: 8
+
+Example for TCP Test:
+    readinessProbe:
+      tcpSocket:
+        port: 3306
+
+Example for executables:
+    readinessProbe:
+      exec:
+        command:
+	  - cat
+	  - /app/is/ready
+
+
+-----------------------------
+# Liveness Probes
+-----------------------------
+A liveness probe is configured inside the container to test if it's actually healthy. If the test fails the container is considered unhealthy and it's destroyed and recreated.
+	HTTP Test - /api/healthy
+	TCP test - 3306
+	Exec command
+Example of liveness probe in pod-definition.yaml:
+apiVersion: v1
+kind: Pod
+metadata:
+  name: simple-webapp
+  labels:
+    name: simple-webapp
+spec:
+  containers:
+  - name: simple-webapp
+    image: simple-webapp
+    ports:
+      - containerPort: 8080
+    livenessProbe:
+      httpGet:
+        path: /api/healthy
+	port: 8080
+      initialDelaySeconds: 10
+      periodSeconds: 5
+      failureThreshold: 8
+
+
+----------------------------
+# Logs - Kubernetes
+----------------------------
+kubectl create -f event-simulator.yaml
+kubectl logs -f event-simulator-pod
+
+
+---------------------------
+# Monitor Kubernetes
+---------------------------
+Numebr of nodes in the cluster
+Performance metrics to see if the cluster needs to be scaled
+Monitor CPU, MEM and DISK utilization
+How many of them are healthy
+CPU and memory consumption in pods
+
+Solutions for metrics:
+	(Open Source):
+		Metrics Server
+		Prometheus
+		Elastic Stack
+	(Proprietary):
+		DataDog
+		Dynatrace
+
+The metrics server retrieves metrics from each of the kubernetes nodes and pods, aggregates them and stores them in memory. In memory solution that does not store data on the disk
+
+Kubernetes run an internal agent known as kubelet which is responsible of carrying out instructions from the kubernets master server and running pods on the nodes. It also contains a subcomponent called cAdvisor. He is responsible of providing the metrics to the metrics server. Enable metrics server
+
+minikube addons enable metrics-server
+Clone git repo in other kubernetes instances
+
+Command to get memory consumption for nodes
+kubectl top node
+
+Command to get memory consumption for pods
+kubectl top pod
+
+---------------------------
+# Labels, Selectors and Annotations
+---------------------------
+
+A label is an identifier for a resource
+kubectl get pods --selector app=App1
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: simple-webapp
+  labels:
+    app: App1
+    function: Front-End
+
+Example with a replicaSet:
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata:
+  name: simple-webapp
+  labels:
+    app: App1
+    function: Front-End
+  annotations:
+    buildversion: 1.34
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: App1
+  template:
+    metadata:
+      labels:
+        app: App1
+	function: Front-End
+    spec:
+      containers:
+      -  name: simple-webapp
+         image: simple-webapp
+
+---------------------------
+# Rollout Updates and Rollbacks in Deployments
+---------------------------
+
+# See history of rollouts for specific deployment
+kubectl rollout status deployment/myapp-deployment
+
+# Deployment Strategy
+Default deployment strategy: rolling update
+Application gets redeployed one instance by one instance
+
+# Apply deployment definition
+kubectl apply-f deployment-definition.yml
+kubectl set image deployment/myapp-deployment nginx=nginx:1.9.1
+
+Whenever you run upgrades the replica set gets a rolling update where every pod is destroyed and then updated concurrently so as to not destroy the application api or endpoints in its containers and so it doesn't crash.
+
+# Rollback updates
+kubectl rollout undo deployment/myapp-deployment
+
+#Summarize commands
+Create deployment
+	kubectl create -f deployment-definition.yml
+Get deployments
+	kubectl get deployments
+Update deployments
+	kubectl apply -f deployment-definition.yml
+	kubectl set image deployment/myapp-deployment nginx=nginx:1.9.1
+Get status
+	kubectl rollout status deployment/myapp-deployment
+	kubectl rollout history deployment/myapp-deployment
+Rollback
+	kubectl rolloyt undo deployment/myapp-deployment
+
+$ kubectl create deployment nginx --image=nginx:1.16
+deployment.apps/nginx created
+
+# Creating a deployment, checking the rollout status and history
+
+master $ kubectl rollout status deployment nginx
+Waiting for deployment "nginx" rollout to finish: 0 of 1 updated replicas are available...
+deployment "nginx" successfully rolled out
+ 
+master $
+ 
+ 
+master $ kubectl rollout history deployment nginx
+deployment.extensions/nginx
+REVISION CHANGE-CAUSE
+1     <none>
+ 
+# Check the status with --revision flag
+
+    master $ kubectl rollout history deployment nginx --revision=1
+    deployment.extensions/nginx with revision #1
+
+    Pod Template:
+     Labels:    app=nginx    pod-template-hash=6454457cdb
+     Containers:  nginx:  Image:   nginx:1.16
+      Port:    <none>
+      Host Port: <none>
+      Environment:    <none>
+      Mounts:   <none>
+     Volumes:   <none>
+    master $
+
+  # Rollback to a previous version
+
+      master $ kubectl rollout undo deployment nginx
+    deployment.extensions/nginx rolled back
+
+    master $ kubectl rollout history deployment nginx
+    deployment.extensions/nginxREVISION CHANGE-CAUSE
+    1     <none>
+    3     kubectl edit deployments. nginx --record=true
+    4     kubectl set image deployment nginx nginx=nginx:1.17 --record=true
+
+
+
+
+    master $ kubectl rollout history deployment nginx --revision=4
+    deployment.extensions/nginx with revision #4Pod Template:
+     Labels:    app=nginx    pod-template-hash=b99b98f9
+     Annotations: kubernetes.io/change-cause: kubectl set image deployment nginx nginx=nginx:1.17 --record=true
+     Containers:
+      nginx:
+      Image:   nginx:1.17
+      Port:    <none>
+      Host Port: <none>
+      Environment:    <none>
+      Mounts:   <none>
+     Volumes:   <none>
+
+
+    master $ kubectl describe deployments. nginx | grep -i image:
+      Image:    nginx:1.17
+    master $
